@@ -1,0 +1,26 @@
+# 1. Сборка фронтенда
+FROM node:20 AS frontend-build
+WORKDIR /src/frontend
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ .
+RUN npm run build
+
+# 2. Сборка бэкенда на .NET 8
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS backend-build
+WORKDIR /src
+COPY backend/backend.csproj backend/
+RUN dotnet restore backend/backend.csproj
+COPY backend/ backend/
+# Копируем собранный фронтенд в папку wwwroot бэкенда (чтобы .NET раздавал статику)
+COPY --from=frontend-build /src/frontend/dist /src/backend/wwwroot
+RUN dotnet publish backend/backend.csproj -c Release -o /app/publish
+
+# 3. Финальный образ для запуска
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+WORKDIR /app
+COPY --from=backend-build /app/publish .
+# Открываем порт 10000 для Render
+ENV ASPNETCORE_URLS=http://0.0.0.0:10000
+EXPOSE 10000
+ENTRYPOINT ["dotnet", "backend.dll"]
